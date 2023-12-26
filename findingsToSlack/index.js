@@ -1,36 +1,13 @@
-# AWS Lambda function to send GuardDuty alerts through Slack
+'use strict';
 
-## Overview
-
-This AWS Lambda function is designed to integrate with Amazon GuardDuty, a threat detection service, and send alerts to a Slack channel when security events are detected. The Lambda function processes GuardDuty events, evaluates their severity, and formats the information into a Slack message.
-
-## Function Components
-
-### 1. Importing Modules
-
-The function uses the following Node.js modules:
-
-```javascript
 const AWS = require('aws-sdk');
 const url = require('url');
 const https = require('https');
-```
 
-These modules are necessary for making HTTPS requests and handling URLs.
+const webHookUrl = process.env['webHookUrl'];
+const slackChannel = process.env.slackChannel;
+const minSeverityLevel = process.env['minSeverityLevel'];
 
-### 2. Configuration Variables
-
-The function relies on the following environment variables:
-
-- `webHookUrl`: Slack webhook URL for sending messages.
-- `slackChannel`: Slack channel where alerts will be posted.
-- `minSeverityLevel`: Minimum severity level for sending alerts.
-
-### 3. `postMessage` Function
-
-This function sends a JSON message to the configured Slack webhook URL.
-
-```javascript
 function postMessage(message, callback) {
     const body = JSON.stringify(message);
     const options = url.parse(webHookUrl);
@@ -58,57 +35,29 @@ function postMessage(message, callback) {
     postReq.write(body);
     postReq.end();
 }
-```
 
-### 4. `processEvent` Function
-
-This is the main function that processes GuardDuty events and constructs Slack messages.
-
-```javascript
 function processEvent(event, callback) {
     const message = event;
     const consoleUrl = `https://console.aws.amazon.com/guardduty`;
     const finding = message.detail.type;
     
-    //...
-}
-```
-
-#### 4.1. Skipping Unwanted Alerts
-
-The function checks if the GuardDuty event type is 'Recon:EC2/PortProbeUnprotectedPort' and skips the alert if true.
-
-```javascript
-if (finding === 'Recon:EC2/PortProbeUnprotectedPort') {
+    if (finding === 'Recon:EC2/PortProbeUnprotectedPort') {
         console.info('Skipping alert for Recon:EC2/PortProbeUnprotectedPort');
         return callback(null);
     }
-```
-
-#### 4.2. Extracting Event Details
-
-Extracts relevant details from the GuardDuty event, such as type, description, time, account ID, region, etc.
-
-```javascript
-const findingDescription = message.detail.description;
+    
+    const findingDescription = message.detail.description;
     const findingTime = message.detail.updatedAt;
     const findingTimeEpoch = Math.floor(new Date(findingTime) / 1000);
     const account = message.detail.accountId;
     const region = message.region;
     const messageId = message.detail.id;
     const lastSeen = `<!date^${findingTimeEpoch}^{date} at {time} | ${findingTime}>`;
-```
+    var color = '#7CD197';
+    var severity = '';
+    var skip = false;
 
-#### 4.3. Determining Severity and Color
-
-Evaluates the severity of the event and assigns a corresponding color for the Slack message.
-
-```javascript
-var color = '#7CD197';
-var severity = '';
-var skip = false;
-
-if (message.detail.severity < 4.0) {
+    if (message.detail.severity < 4.0) {
         if (minSeverityLevel !== 'LOW') {
             skip = true;
         }
@@ -126,14 +75,8 @@ if (message.detail.severity < 4.0) {
     } else {
         skip = true;
     }
-```
 
-#### 4.4. Constructing Slack Message Attachment
-
-Builds a structured attachment for the Slack message containing information about the event.
-
-```javascript
-const attachment = [{
+    const attachment = [{
         "fallback": finding + ` - ${consoleUrl}/home?region=` +
             `${region}#/findings?search=id%3D${messageId}`,
         "pretext": `*Finding in ${region} for Acct: ${account}`,
@@ -148,14 +91,8 @@ const attachment = [{
         "mrkdwn_in": ["pretext"],
         "color": color
     }];
-```
 
-#### 4.5. Sending Slack Message
-
-Sends the constructed Slack message if it meets the severity criteria.
-
-```javascript
-const slackMessage = {
+    const slackMessage = {
         channel: slackChannel,
         text : '',
         attachments : attachment,
@@ -177,26 +114,8 @@ const slackMessage = {
             }
         });
     }
-```
+}
 
-### 5. AWS Lambda Handler
-
-The AWS Lambda handler invokes the `processEvent` function when triggered.
-
-```javascript
 exports.handler = (event, context, callback) => {
     processEvent(event, callback);
 };
-```
-
-## Usage
-
-1. **Environment Variables**: Set the required environment variables (`webHookUrl`, `slackChannel`, `minSeverityLevel`) in the AWS Lambda console.
-
-2. **Integration with GuardDuty**: Configure this Lambda function as an event handler for GuardDuty findings in the AWS Lambda console.
-
-3. **Slack Integration**: Ensure that the Slack channel and webhook URL are correctly configured for receiving alerts.
-
-## Conclusion
-
-This Lambda function enhances security monitoring by providing real-time alerts for GuardDuty findings in a Slack channel, allowing for timely response to potential security threats.
